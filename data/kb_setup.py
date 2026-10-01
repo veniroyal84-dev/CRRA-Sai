@@ -8,10 +8,13 @@ Run from the project root:
     python data/kb_setup.py
 """
 
-import chromadb
+import os
 from pathlib import Path
 
+import chromadb
+
 KB_DIR = Path(__file__).parent / "kb"
+CHROMA_PATH = Path(os.environ.get("CRRA_CHROMA_PATH", Path(__file__).parent / "chroma_db"))
 COLLECTION_NAME = "crra_policy"
 
 
@@ -56,15 +59,6 @@ def chunk_article(text: str, filename: str) -> list[dict]:
 
 
 def main() -> None:
-    client = chromadb.Client()
-
-    # Start clean so re-running the script does not stack duplicate chunks
-    try:
-        client.delete_collection(COLLECTION_NAME)
-    except Exception:
-        pass
-    collection = client.create_collection(COLLECTION_NAME)
-
     md_files = sorted(KB_DIR.glob("*.md"))
     if not md_files:
         raise SystemExit(f"No .md files found in {KB_DIR} — check the folder path.")
@@ -81,6 +75,17 @@ def main() -> None:
             all_docs.append(c["document"])
             all_meta.append(c["metadata"])
 
+    if not all_ids:
+        raise SystemExit(f"No policy chunks found in {KB_DIR} — check the article contents.")
+
+    client = chromadb.PersistentClient(path=str(CHROMA_PATH))
+
+    # Start clean so re-running the script does not stack duplicate chunks
+    try:
+        client.delete_collection(COLLECTION_NAME)
+    except Exception:
+        pass
+    collection = client.create_collection(COLLECTION_NAME)
     collection.add(ids=all_ids, documents=all_docs, metadatas=all_meta)
     print("=" * 55)
     print(f"  TOTAL: {len(all_ids)} chunks from {len(md_files)} articles\n")
@@ -99,7 +104,7 @@ def main() -> None:
         res = collection.query(query_texts=[q], n_results=1)
         source = res["metadatas"][0][0]["source"]
         heading = res["metadatas"][0][0]["heading"]
-        confidence = 1 - res["distances"][0][0]
+        confidence = 1 / (1 + res["distances"][0][0])
         print(f'  "{q[:46]}..."')
         print(f"     -> {source}  §{heading}   confidence {confidence:.0%}\n")
 

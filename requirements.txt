@@ -1,0 +1,6 @@
+anthropic==0.40.0
+chromadb==0.5.5
+flask==3.0.3
+langgraph==0.2.34
+python-dotenv==1.0.1
+requests==2.32.3
